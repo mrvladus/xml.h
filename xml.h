@@ -81,12 +81,19 @@ static inline XMLNode *xml_parse_file(const char *path);
 // Returns NULL if not found.
 static inline XMLNode *xml_node_child_at(XMLNode *node, size_t idx);
 
+// Get first matching tag in the tree.
+// If exact is "false" - will return first tag which name contains "tag"
+static inline XMLNode *xml_node_get_tag(XMLNode *node, const char *tag, bool exact);
+
 // Get value of the tag attribute.
 // Returns NULL if not found.
 static inline const char *xml_node_attr(XMLNode *node, const char *attr_key);
 
 // Cleanup node and all it's children.
 static inline void xml_node_free(XMLNode *node);
+
+// Macro for looping node children
+#define for_child(node, idx) for (size_t idx = 0; idx < node->children->len; idx++)
 
 // --------------------------------------------------------------------------------------------- //
 //                                   FUNCTIONS IMPLEMENTATIONS                                   //
@@ -144,6 +151,22 @@ static inline XMLNode *xml_node_child_at(XMLNode *node, size_t index) {
   if (index > node->children->len - 1)
     return NULL;
   return (XMLNode *)node->children->data[index];
+}
+
+static inline XMLNode *xml_node_get_tag(XMLNode *node, const char *tag, bool exact) {
+  XMLNode *out = NULL;
+  for (size_t i = 0; i < node->children->len; i++) {
+    XMLNode *child = (XMLNode *)node->children->data[i];
+    if (exact) {
+      if (!strcmp(child->tag, tag))
+        return child;
+    } else {
+      if (strstr(child->tag, tag))
+        return child;
+    }
+    out = xml_node_get_tag(child, tag, exact);
+  }
+  return out;
 }
 
 static inline const char *xml_node_attr(XMLNode *node, const char *attr_key) {

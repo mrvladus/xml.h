@@ -52,6 +52,10 @@ int main() {
     }
   }
 
+  // Find 1st matching tag
+  XMLNode *matching_tag = xml_node_get_tag(root, "title", true);
+  printf("Found tag: %s\n", matching_tag->tag);
+
   // Cleanup and exit
   xml_node_free(root);
   return 0;
