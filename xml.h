@@ -45,28 +45,32 @@ typedef struct XMLList {
   void **data;
 } XMLList;
 
-// Parse XML string and return root XMLNode. Returns NULL for error.
+// Parse XML string and return root XMLNode.
+// Returns NULL for error.
 static inline XMLNode *xml_parse_string(const char *xml);
 
 // Parse XML file for given path and return root XMLNode.
 // Returns NULL for error.
 static inline XMLNode *xml_parse_file(const char *path);
 
-// Get child of the node at index. Returns NULL if not found.
+// Get child of the node at index.
+// Returns NULL if not found.
 static inline XMLNode *xml_node_child_at(XMLNode *node, size_t idx);
 
-// Get value of the tag attribute
+// Get value of the tag attribute.
+// Returns NULL if not found.
 static inline const char *xml_node_attr(XMLNode *node, const char *attr_key);
 
 // Cleanup node and all it's children.
 static inline void xml_node_free(XMLNode *node);
 
-// ---------- FUNCTIONS IMPLEMENTATIONS ---------- //
+// --------------------------------------------------------------------------------------------- //
+//                                   FUNCTIONS IMPLEMENTATIONS                                   //
+// --------------------------------------------------------------------------------------------- //
 
 // Print debug message. Only if XML_H_DEBUG is defined.
 #ifdef XML_H_DEBUG
-#define LOG_DEBUG(format, ...)                                                 \
-  fprintf(stderr, "[xml.h] " format "\n", ##__VA_ARGS__)
+#define LOG_DEBUG(format, ...) fprintf(stderr, "[xml.h] " format "\n", ##__VA_ARGS__)
 #else
 #define LOG_DEBUG(format, ...)
 #endif
