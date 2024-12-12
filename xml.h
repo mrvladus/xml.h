@@ -275,6 +275,7 @@ static XMLNode *parse_start_tag(XMLNode *node, const char *xml, size_t *idx) {
   node->tag = (char *)malloc(sizeof(char) * tag_len + 1);
   strncpy(node->tag, xml + tag_start, tag_len);
   node->tag[tag_len] = '\0';
+  LOG_DEBUG("Parse start tag %s", node->tag);
   XMLNode *out = node;
   if (xml[*idx] != '>')
     out = parse_tag_attrs(node, xml, idx);
@@ -285,17 +286,24 @@ static XMLNode *parse_start_tag(XMLNode *node, const char *xml, size_t *idx) {
 // Parse inner text of the tag
 static void parse_text(XMLNode *node, const char *xml, size_t *idx) {
   size_t text_start = *idx;
-  while (xml[*idx] != '<' && xml[*idx + 1] != '/')
+  // while (xml[*idx] != '<' && xml[*idx + 1] != '/') {
+  //   LOG_DEBUG("%c", xml[*idx]);
+  //   (*idx)++;
+  // }
+  while (xml[*idx] != '<') {
     (*idx)++;
+  }
   size_t text_len = *idx - text_start;
   node->text = (char *)malloc(sizeof(char) * text_len + 1);
   strncpy(node->text, xml + text_start, text_len);
   node->text[text_len] = '\0';
   strip_new_lines(node->text);
+  LOG_DEBUG("Parse text %s", node->text);
 }
 
 // Parse ending tag like </tag>
 static XMLNode *parse_end_tag(XMLNode *node, const char *xml, size_t *idx) {
+  LOG_DEBUG("Parse end tag %s", node->tag);
   while (xml[*idx] != '>')
     (*idx)++;
   (*idx)++; // Move past '>' character
@@ -304,6 +312,7 @@ static XMLNode *parse_end_tag(XMLNode *node, const char *xml, size_t *idx) {
 
 // Skip comments like <!-- comment -->
 static void parse_comment(const char *xml, size_t *idx) {
+  LOG_DEBUG("Parse comment");
   while (xml[*idx] != '>')
     (*idx)++;
   (*idx)++; // Move past '>' character
@@ -311,8 +320,9 @@ static void parse_comment(const char *xml, size_t *idx) {
 
 // Parse <!tag> type of tags
 static void parse_processing_instruction(const char *xml, size_t *idx) {
+  LOG_DEBUG("Parse processing instruction");
   size_t count = 0; // Count for inner '<' and '>' brackets
-  while (xml[*idx] != '>' && count > 0) {
+  while (xml[*idx] != '>' && count != 0) {
     if (xml[*idx] == '<')
       count++;
     else if (xml[*idx] == '>')
@@ -323,10 +333,12 @@ static void parse_processing_instruction(const char *xml, size_t *idx) {
 }
 
 static inline XMLNode *xml_parse_string(const char *xml) {
+  LOG_DEBUG("Parse string");
   XMLNode *root = xml_node_new(NULL);
   XMLNode *curr_node = root;
   size_t idx = 0;
   while (xml[idx] != '\0') {
+    // LOG_DEBUG("%c", xml[idx]);
     if (xml[idx] == '<') {
       if (xml[idx + 1] == '?') {
         parse_processing_instruction(xml, &idx);
@@ -351,6 +363,7 @@ static inline XMLNode *xml_parse_string(const char *xml) {
     else
       idx++;
   }
+  LOG_DEBUG("Done parsing string");
   return root;
 }
 
@@ -384,3 +397,4 @@ static inline XMLNode *xml_parse_file(const char *path) {
 #endif
 
 #endif // XML_H
+
