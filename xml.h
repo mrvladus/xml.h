@@ -81,9 +81,12 @@ static inline XMLNode *xml_parse_file(const char *path);
 // Returns NULL if not found.
 static inline XMLNode *xml_node_child_at(XMLNode *node, size_t idx);
 
+// Find xml tag by path like "div/p/href"
+static inline XMLNode *xml_node_find_by_path(XMLNode *root, const char *path, bool exact);
+
 // Get first matching tag in the tree.
 // If exact is "false" - will return first tag which name contains "tag"
-static inline XMLNode *xml_node_get_tag(XMLNode *node, const char *tag, bool exact);
+static inline XMLNode *xml_node_find_tag(XMLNode *node, const char *tag, bool exact);
 
 // Get value of the tag attribute.
 // Returns NULL if not found.
@@ -153,20 +156,57 @@ static inline XMLNode *xml_node_child_at(XMLNode *node, size_t index) {
   return (XMLNode *)node->children->data[index];
 }
 
-static inline XMLNode *xml_node_get_tag(XMLNode *node, const char *tag, bool exact) {
-  XMLNode *out = NULL;
+static inline XMLNode *xml_node_find_tag(XMLNode *node, const char *tag, bool exact) {
+  if (!node || !tag)
+    return NULL; // Invalid input
+  // Check if the current node matches the tag
+  if (node->tag &&
+      ((exact && strcmp(node->tag, tag) == 0) || (!exact && strstr(node->tag, tag) != NULL)))
+    return node;
+  // Recursively search through the children of the node
   for (size_t i = 0; i < node->children->len; i++) {
     XMLNode *child = (XMLNode *)node->children->data[i];
-    if (exact) {
-      if (!strcmp(child->tag, tag))
-        return child;
-    } else {
-      if (strstr(child->tag, tag))
-        return child;
-    }
-    out = xml_node_get_tag(child, tag, exact);
+    XMLNode *result = xml_node_find_tag(child, tag, exact);
+    if (result)
+      return result; // Return the first match found
   }
-  return out;
+  // No match found in this subtree
+  return NULL;
+}
+
+static inline XMLNode *xml_node_find_by_path(XMLNode *root, const char *path, bool exact) {
+  if (!root || !path) {
+    return NULL; // Invalid input
+  }
+
+  char *tokenized_path = strdup(path); // Copy to avoid modifying the input
+  if (!tokenized_path) {
+    return NULL; // Memory allocation failure
+  }
+
+  char *segment = strtok(tokenized_path, "/");
+  XMLNode *current = root;
+
+  while (segment && current) {
+    bool found = false;
+    for (size_t i = 0; i < current->children->len; i++) {
+      XMLNode *child = (XMLNode *)current->children->data[i];
+      if ((exact && strcmp(child->tag, segment) == 0) ||
+          (!exact && strstr(child->tag, segment) != NULL)) {
+        current = child;
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      free(tokenized_path);
+      return NULL; // Path not found
+    }
+    segment = strtok(NULL, "/");
+  }
+
+  free(tokenized_path);
+  return current;
 }
 
 static inline const char *xml_node_attr(XMLNode *node, const char *attr_key) {
