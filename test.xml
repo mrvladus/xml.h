@@ -13,6 +13,7 @@
         <year>1949</year>
         <genre>Dystopian</genre>
         <rating value="4.8" />
+        <bestseller />
     </book>
     <book id="3">
         <title>To Kill a Mockingbird</title>

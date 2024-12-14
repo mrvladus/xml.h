@@ -1,3 +1,4 @@
+#define XML_H_DEBUG
 #include "xml.h"
 
 int main() {
@@ -53,7 +54,7 @@ int main() {
   }
 
   // Find 1st matching tag
-  XMLNode *matching_tag = xml_node_get_tag(root, "title", true);
+  XMLNode *matching_tag = xml_node_find_tag(root, "title", true);
   printf("Found tag: %s\n", matching_tag->tag);
 
   // Cleanup and exit
