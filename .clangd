@@ -1,0 +1,7 @@
+CompileFlags:
+  Add:
+  - -x
+  - c
+  - -DXML_H_IMPLEMENTATION
+  - -DXML_H_TEST
+  - -Wno-macro-redefined
