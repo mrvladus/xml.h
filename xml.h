@@ -95,7 +95,7 @@ void xml_node_free(XMLNode *node);
 
 // Print debug message. Only if XML_H_DEBUG is defined.
 #ifdef XML_H_DEBUG
-#define LOG_DEBUG(format, ...) fprintf(stderr, "[XML.H DEBUG] " format "\n", ##__VA_ARGS__)
+#define LOG_DEBUG(format, ...) printf("[XML.H DEBUG] " format "\n", ##__VA_ARGS__)
 #else
 #define LOG_DEBUG(format, ...)
 #endif
@@ -131,8 +131,7 @@ static XMLNode *xml_node_new(XMLNode *parent) {
   node->text = NULL;
   node->children = xml_list_new();
   node->attrs = xml_list_new();
-  if (parent)
-    xml_list_add(parent->children, node);
+  if (parent) xml_list_add(parent->children, node);
   return node;
 }
 
@@ -145,43 +144,35 @@ static void xml_node_add_attr(XMLNode *node, char *key, char *value) {
 }
 
 XMLNode *xml_node_child_at(XMLNode *node, size_t index) {
-  if (index > node->children->len - 1)
-    return NULL;
+  if (index > node->children->len - 1) return NULL;
   return (XMLNode *)node->children->data[index];
 }
 
 XMLNode *xml_node_find_tag(XMLNode *node, const char *tag, bool exact) {
-  if (!node || !tag)
-    return NULL; // Invalid input
+  if (!node || !tag) return NULL; // Invalid input
   // Check if the current node matches the tag
-  if (node->tag &&
-      ((exact && strcmp(node->tag, tag) == 0) || (!exact && strstr(node->tag, tag) != NULL)))
-    return node;
+  if (node->tag && ((exact && strcmp(node->tag, tag) == 0) || (!exact && strstr(node->tag, tag) != NULL))) return node;
   // Recursively search through the children of the node
   for (size_t i = 0; i < node->children->len; i++) {
     XMLNode *child = (XMLNode *)node->children->data[i];
     XMLNode *result = xml_node_find_tag(child, tag, exact);
-    if (result)
-      return result; // Return the first match found
+    if (result) return result; // Return the first match found
   }
   // No match found in this subtree
   return NULL;
 }
 
 XMLNode *xml_node_find_by_path(XMLNode *root, const char *path, bool exact) {
-  if (!root || !path)
-    return NULL;
+  if (!root || !path) return NULL;
   char *tokenized_path = strdup(path);
-  if (!tokenized_path)
-    return NULL;
+  if (!tokenized_path) return NULL;
   char *segment = strtok(tokenized_path, "/");
   XMLNode *current = root;
   while (segment && current) {
     bool found = false;
     for (size_t i = 0; i < current->children->len; i++) {
       XMLNode *child = (XMLNode *)current->children->data[i];
-      if ((exact && strcmp(child->tag, segment) == 0) ||
-          (!exact && strstr(child->tag, segment) != NULL)) {
+      if ((exact && strcmp(child->tag, segment) == 0) || (!exact && strstr(child->tag, segment) != NULL)) {
         current = child;
         found = true;
         break;
@@ -198,22 +189,18 @@ XMLNode *xml_node_find_by_path(XMLNode *root, const char *path, bool exact) {
 }
 
 const char *xml_node_attr(XMLNode *node, const char *attr_key) {
-  if (!node || !attr_key)
-    return NULL;
+  if (!node || !attr_key) return NULL;
   for (size_t i = 0; i < node->attrs->len; i++) {
     XMLAttr *attr = (XMLAttr *)node->attrs->data[i];
-    if (!strcmp(attr->key, attr_key))
-      return attr->value;
+    if (!strcmp(attr->key, attr_key)) return attr->value;
   }
   return NULL;
 }
 
 void xml_node_free(XMLNode *node) {
-  if (node == NULL)
-    return;
+  if (node == NULL) return;
   // Free text
-  if (node->text)
-    free(node->text);
+  if (node->text) free(node->text);
   // Free the attributes
   for (size_t i = 0; i < node->attrs->len; i++) {
     XMLAttr *attr = (XMLAttr *)node->attrs->data[i];
@@ -229,8 +216,7 @@ void xml_node_free(XMLNode *node) {
   free(node->children->data);
   free(node->children);
   // Free the tag
-  if (node->tag)
-    free(node->tag);
+  if (node->tag) free(node->tag);
   // Free the node itself
   free(node);
 }
@@ -311,8 +297,7 @@ static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
     LOG_DEBUG("Parsed start tag with no attributes: <%s>", (*curr_node)->tag);
     skip_whitespace(xml, idx);
     // Check if it's an empty tag <tag></tag>
-    if (xml[*idx] == '<' && xml[*idx + 1] == '/')
-      return true;
+    if (xml[*idx] == '<' && xml[*idx + 1] == '/') return true;
     // Check if it's a sub-tag
     if (xml[*idx] == '<') {
       (*idx)++;
@@ -396,7 +381,6 @@ static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
 XMLNode *xml_parse_string(const char *xml) {
   LOG_DEBUG("Parse string: %s", xml);
   XMLNode *root = xml_node_new(NULL);
-  root->tag = strdup("ROOT");
   XMLNode *curr_node = root;
   size_t idx = 0;
   while (xml[idx] != '\0') {
@@ -405,10 +389,8 @@ XMLNode *xml_parse_string(const char *xml) {
     if (xml[idx] == '<') {
       idx++;
       skip_whitespace(xml, &idx);
-      if (skip_tags(xml, &idx))
-        continue;
-      if (!parse_tag(xml, &idx, &curr_node))
-        continue;
+      if (skip_tags(xml, &idx)) continue;
+      if (!parse_tag(xml, &idx, &curr_node)) continue;
     }
     idx++;
   }
@@ -418,8 +400,7 @@ XMLNode *xml_parse_string(const char *xml) {
 
 XMLNode *xml_parse_file(const char *path) {
   FILE *file = fopen(path, "rb");
-  if (!file)
-    return NULL;
+  if (!file) return NULL;
   fseek(file, 0, SEEK_END);
   long file_size = ftell(file);
   fseek(file, 0, SEEK_SET);
@@ -445,21 +426,25 @@ XMLNode *xml_parse_file(const char *path) {
 
 #ifdef XML_H_TEST
 
-char test_xml[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
-                  "<!-- Test comment -->"
-                  "<library>"
-                  "    <book id=\"1\">"
-                  "        <title>The Great Gatsby</title>"
-                  "        <author>F. Scott Fitzgerald</author>"
-                  "        <rating value=\"4.5\" />"
-                  "    </book>"
-                  "    <book id=\"2\">"
-                  "        <title>1984</title>"
-                  "        <author>George Orwell</author>"
-                  "        <rating value=\"4.9\" />"
-                  "        <bestseller />"
-                  "    </book>"
-                  "</library>";
+// To run tests compile with:
+// $ cp xml.h xml.c && cc -DXML_H_IMPLEMENTATION -DXML_H_TEST -DXML_H_DEBUG -o test xml.c && rm xml.c
+// $ ./test
+
+const char test_xml[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
+                        "<!-- Test comment -->"
+                        "<library>"
+                        "    <book id=\"1\">"
+                        "        <title>The Great Gatsby</title>"
+                        "        <author>F. Scott Fitzgerald</author>"
+                        "        <rating value=\"4.5\" />"
+                        "    </book>"
+                        "    <book id=\"2\">"
+                        "        <title>1984</title>"
+                        "        <author>George Orwell</author>"
+                        "        <rating value=\"4.9\" />"
+                        "        <bestseller />"
+                        "    </book>"
+                        "</library>";
 
 int main() {
   printf("Test XML:\n%s\n", test_xml);
@@ -467,10 +452,6 @@ int main() {
   XMLNode *root = xml_parse_string(test_xml);
   // Get first child of the root node
   XMLNode *library = xml_node_child_at(root, 0);
-  // Get second book
-  XMLNode *book2 = xml_node_child_at(library, 1);
-  // Get book title
-  XMLNode *title = xml_node_child_at(book2, 0);
   // Print ratings of all books
   for (size_t i = 0; i < library->children->len; i++) {
     // Get book
