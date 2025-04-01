@@ -30,7 +30,7 @@
 
 #ifdef __cplusplus
 extern "C" {
-#endif
+#endif // __cplusplus
 
 typedef struct XMLNode XMLNode;
 typedef struct XMLList XMLList;
@@ -54,8 +54,8 @@ typedef struct XMLAttr {
 // Simple dynamic list that only can grow in size.
 // Used in XMLNode for list of children and list of tag attributes.
 struct XMLList {
-  size_t size; // Capacity of the list in bytes.
   size_t len;  // Length of the list.
+  size_t size; // Capacity of the list in bytes.
   void **data; // List of pointers to list items.
 };
 
@@ -81,7 +81,7 @@ void xml_node_free(XMLNode *node);
 
 #ifdef __cplusplus
 }
-#endif
+#endif // __cplusplus
 
 #endif // XML_H
 
@@ -154,8 +154,7 @@ XMLNode *xml_node_find_tag(XMLNode *node, const char *tag, bool exact) {
   if (node->tag && ((exact && strcmp(node->tag, tag) == 0) || (!exact && strstr(node->tag, tag) != NULL))) return node;
   // Recursively search through the children of the node
   for (size_t i = 0; i < node->children->len; i++) {
-    XMLNode *child = (XMLNode *)node->children->data[i];
-    XMLNode *result = xml_node_find_tag(child, tag, exact);
+    XMLNode *result = xml_node_find_tag(node->children->data[i], tag, exact);
     if (result) return result; // Return the first match found
   }
   // No match found in this subtree
