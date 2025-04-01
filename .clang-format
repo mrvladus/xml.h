@@ -1,2 +1,4 @@
 ColumnLimit: 120
 AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortBlocksOnASingleLine: Always
+AllowShortLoopsOnASingleLine: true

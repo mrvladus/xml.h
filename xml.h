@@ -210,8 +210,7 @@ void xml_node_free(XMLNode *node) {
   free(node->attrs->data);
   free(node->attrs);
   // Recursively free the children
-  for (size_t i = 0; i < node->children->len; i++)
-    xml_node_free((XMLNode *)node->children->data[i]);
+  for (size_t i = 0; i < node->children->len; i++) xml_node_free((XMLNode *)node->children->data[i]);
   free(node->children->data);
   free(node->children);
   // Free the tag
@@ -225,11 +224,9 @@ void xml_node_free(XMLNode *node) {
 // Trim leading and trailing whitespace from a string (in place).
 static void trim_text(char *text) {
   char *start = text;
-  while (*start && isspace((unsigned char)*start))
-    start++;
+  while (*start && isspace((unsigned char)*start)) start++;
   char *dest = text;
-  while (*start)
-    *dest++ = *start++;
+  while (*start) *dest++ = *start++;
   *dest = '\0';
   dest = text + strlen(text) - 1;
   while (dest >= text && isspace((unsigned char)*dest)) {
@@ -239,8 +236,7 @@ static void trim_text(char *text) {
 }
 
 static void skip_whitespace(const char *xml, size_t *idx) {
-  while (isspace(xml[*idx]))
-    (*idx)++;
+  while (isspace(xml[*idx])) (*idx)++;
 }
 
 // Skip processing instructions and comments
@@ -249,21 +245,73 @@ static bool skip_tags(const char *xml, size_t *idx) {
   size_t start = *idx;
   // Processing instruction
   if (xml[*idx] == '?') {
-    while (!(xml[*idx] == '>' && xml[*idx - 1] == '?'))
-      (*idx)++;
+    while (!(xml[*idx] == '>' && xml[*idx - 1] == '?')) (*idx)++;
     (*idx)++;
     LOG_DEBUG("Parsed processing instruction: <%.*s", (int)(*idx - start), xml + start);
     return true;
   }
   // Comment
   else if (xml[*idx] == '!' && xml[*idx + 1] == '-' && xml[*idx + 2] == '-') {
-    while (!(xml[*idx] == '>' && xml[*idx - 1] == '-' && xml[*idx - 2] == '-'))
-      (*idx)++;
+    while (!(xml[*idx] == '>' && xml[*idx - 1] == '-' && xml[*idx - 2] == '-')) (*idx)++;
     (*idx)++;
     LOG_DEBUG("Parsed comment: <%.*s", (int)(*idx - start), xml + start);
     return true;
   }
   return false;
+}
+
+// Parse end tag </tag>.
+static void parse_end_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
+  (*idx)++; // Skip '/'
+  skip_whitespace(xml, idx);
+  size_t tag_start = *idx;
+  while (xml[*idx] != '>') (*idx)++;
+  (*idx)++; // Skip '>'
+  LOG_DEBUG("Parsed end tag: </%s>", (*curr_node)->tag);
+  *curr_node = (*curr_node)->parent;
+}
+
+// Parse tag name <name ... >
+static void parse_tag_name(const char *xml, size_t *idx, XMLNode **curr_node) {
+  size_t tag_start = *idx;
+  while (!(isspace(xml[*idx]) || xml[*idx] == '>' || xml[*idx] == '/')) (*idx)++;
+  (*curr_node)->tag = strndup(xml + tag_start, *idx - tag_start);
+}
+
+// Parse tag attributes <tag attr="value" ... >
+static void parse_tag_attributes(const char *xml, size_t *idx, XMLNode **curr_node) {
+  skip_whitespace(xml, idx);
+  while (!(xml[*idx] == '>' || xml[*idx] == '/')) {
+    // Get attribute key
+    size_t attr_start = *idx;
+    while (!(xml[*idx] == '=' || isspace(xml[*idx]))) (*idx)++;
+    char *attr_key = strndup(xml + attr_start, *idx - attr_start);
+    // Skip ="
+    if (isspace(xml[*idx])) skip_whitespace(xml, idx);
+    else if (xml[*idx] == '=') {
+      (*idx)++;
+      skip_whitespace(xml, idx);
+    }
+    char quote = xml[*idx];
+    (*idx)++; // Skip opening quote
+    size_t value_start = *idx;
+    while (!(xml[*idx] == quote && xml[*idx - 1] != '\\')) (*idx)++;
+    char *attr_value = strndup(xml + value_start, *idx - value_start);
+    (*idx)++; // Skip closing quote
+    xml_node_add_attr(*curr_node, attr_key, attr_value);
+    skip_whitespace(xml, idx);
+    LOG_DEBUG("Parsed tag attribute: <%s %s=\"%s\">", (*curr_node)->tag, attr_key, attr_value);
+  }
+}
+
+static void parse_tag_inner_text(const char *xml, size_t *idx, XMLNode **curr_node) {
+  size_t text_start = *idx;
+  while (xml[*idx] != '<') (*idx)++;
+  if (*idx > text_start) {
+    (*curr_node)->text = strndup(xml + text_start, *idx - text_start);
+    trim_text((*curr_node)->text);
+    LOG_DEBUG("Parsed inner text for <%s>: %s", (*curr_node)->tag, (*curr_node)->text);
+  }
 }
 
 // Parse start tag.
@@ -273,107 +321,38 @@ static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   skip_whitespace(xml, idx);
   // End tag </tag>
   if (xml[*idx] == '/') {
-    (*idx)++; // Skip '/'
-    size_t tag_start = *idx;
-    while (xml[*idx] != '>' && xml[*idx] != '\0') // Ensure we don't go out of bounds
-      (*idx)++;
-    (*idx)++; // Skip '>'
-    LOG_DEBUG("Parsed end tag: </%s>", (*curr_node)->tag);
-    *curr_node = (*curr_node)->parent;
+    parse_end_tag(xml, idx, curr_node);
     return false;
   }
   // Create new node with current curr_node as parent
   *curr_node = xml_node_new(*curr_node);
   // Start tag <tag...>
-  // Get tag name
-  size_t tag_start = *idx;
-  while (xml[*idx] != '\0' && !(isspace(xml[*idx]) || xml[*idx] == '>' || xml[*idx] == '/'))
-    (*idx)++;
-  (*curr_node)->tag = strndup(xml + tag_start, *idx - tag_start);
-  skip_whitespace(xml, idx);
-  if (xml[*idx] == '>') {
+  parse_tag_name(xml, idx, curr_node);
+  // Parse attributes
+  if (isspace(xml[*idx])) parse_tag_attributes(xml, idx, curr_node);
+  // Self-closing tag <tag ... />
+  if (xml[*idx] == '/') {
+    (*idx)++; // Skip '/'
+    while (xml[*idx] != '>') (*idx)++;
     (*idx)++; // Consume '>'
-    LOG_DEBUG("Parsed start tag with no attributes: <%s>", (*curr_node)->tag);
+    LOG_DEBUG("Parsed self-closing tag: <%s/>", (*curr_node)->tag);
+    *curr_node = (*curr_node)->parent;
+    return false;
+  }
+  // Start tag <tag ... >
+  else if (xml[*idx] == '>') {
+    (*idx)++; // Consume '>'
+    LOG_DEBUG("Parsed start tag: <%s>", (*curr_node)->tag);
     skip_whitespace(xml, idx);
-    // Check if it's an empty tag <tag></tag>
-    if (xml[*idx] == '<' && xml[*idx + 1] == '/') return true;
-    // Check if it's a sub-tag
-    if (xml[*idx] == '<') {
-      (*idx)++;
-      return parse_tag(xml, idx, curr_node);
-    }
-    // Inner text handling
-    size_t text_start = *idx;
-    while (xml[*idx] != '<' && xml[*idx] != '\0')
-      (*idx)++;
-    // Extract and store inner text
-    if (*idx > text_start) {
-      (*curr_node)->text = (strndup(xml + text_start, *idx - text_start));
-      trim_text((*curr_node)->text);
-      LOG_DEBUG("Parsed inner text for <%s>: %s", (*curr_node)->tag, (*curr_node)->text);
-    }
+    parse_tag_inner_text(xml, idx, curr_node);
     // If the next character is '<', parse the next tag
     if (xml[*idx] == '<') {
-      (*idx)++;
+      (*idx)++; // Consume '<'
       return parse_tag(xml, idx, curr_node);
     }
     return true;
   }
-  // Self-closing tag <tag/>
-  if (xml[*idx] == '/') {
-    (*idx)++; // Skip '/'
-    if (xml[*idx] == '>') {
-      (*idx)++; // Skip '>'
-      LOG_DEBUG("Parsed self-closing tag: <%s/>", (*curr_node)->tag);
-      *curr_node = (*curr_node)->parent;
-      return false;
-    }
-  }
-  // Tag with attributes
-  while (xml[*idx] != '>' && xml[*idx] != '/' && xml[*idx] != '\0') {
-    skip_whitespace(xml, idx);
-    // Get attribute key
-    size_t attr_start = *idx;
-    while (xml[*idx] != '=' && !isspace(xml[*idx]) && xml[*idx] != '>' && xml[*idx] != '/')
-      (*idx)++;
-    char *attr_key = strndup(xml + attr_start, *idx - attr_start);
-    // Skip spaces and '='
-    while (isspace(xml[*idx]) || xml[*idx] == '=')
-      (*idx)++;
-    // Ensure the value is quoted
-    char quote = xml[*idx];
-    if (quote != '"' && quote != '\'') {
-      LOG_ERROR("Malformed attribute: <%s>", attr_key);
-      free(attr_key);
-      return false;
-    }
-    (*idx)++; // Skip opening quote
-    size_t value_start = *idx;
-    while (xml[*idx] != quote && xml[*idx] != '\0')
-      (*idx)++;
-    char *attr_value = strndup(xml + value_start, *idx - value_start);
-    (*idx)++; // Skip closing quote
-    xml_node_add_attr(*curr_node, attr_key, attr_value);
-    // Skip spaces
-    while (isspace(xml[*idx]))
-      (*idx)++;
-  }
-  // Self-closing tag with attributes <tag attr1="val1" />
-  if (xml[*idx] == '/') {
-    (*idx)++; // Skip '/'
-    if (xml[*idx] == '>') {
-      (*idx)++; // Skip '>'
-      LOG_DEBUG("Parsed self-closing tag with attributes: <%s/>", (*curr_node)->tag);
-      *curr_node = (*curr_node)->parent;
-      return false;
-    }
-  }
-  // Tag with attributes
-  if (xml[*idx] == '>') {
-    (*idx)++; // Consume '>'
-    LOG_DEBUG("Parsed start tag with attributes: <%s>", (*curr_node)->tag);
-    return true;
-  }
+  skip_whitespace(xml, idx);
   return true;
 }
 
@@ -445,32 +424,41 @@ const char test_xml[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
                         "    </book>"
                         "</library>";
 
+const char xml[] =
+    "<?xml version=\"1.0\"?><d:multistatus xmlns:d=\"DAV:\" xmlns:s=\"http://sabredav.org/ns\" "
+    "xmlns:oc=\"http://owncloud.org/ns\" "
+    "xmlns:nc=\"http://nextcloud.org/ns\"><d:response><d:href>/remote.php/dav/</"
+    "d:href><d:propstat><d:prop><d:current-user-principal><d:href>/remote.php/dav/principals/users/vlad/</d:href></"
+    "d:current-user-principal></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>";
+
 int main() {
-  printf("Test XML:\n%s\n", test_xml);
-  // Parse XML file and get root node
-  XMLNode *root = xml_parse_string(test_xml);
-  // Get first child of the root node
-  XMLNode *library = xml_node_child_at(root, 0);
-  // Print ratings of all books
-  for (size_t i = 0; i < library->children->len; i++) {
-    // Get book
-    XMLNode *book = xml_node_child_at(library, i);
-    for (size_t j = 0; j < book->children->len; j++) {
-      // Get book child tag
-      XMLNode *sub_tag = xml_node_child_at(book, j);
-      // If tag name is "rating" - print its value
-      if (!strcmp(sub_tag->tag, "rating")) {
-        // Get rating value
-        const char *rating = xml_node_attr(sub_tag, "value");
-        printf("Rating is %s\n", rating);
-      }
-    }
-  }
-  // Find 1st matching tag
-  XMLNode *matching_tag = xml_node_find_tag(root, "title", true);
-  printf("Matching tag for 'title' = '%s'\n", matching_tag->tag);
-  // Cleanup and exit
-  xml_node_free(root);
+  XMLNode *root = xml_parse_string(xml);
+
+  // printf("Test XML:\n%s\n", test_xml);
+  // // Parse XML file and get root node
+  // XMLNode *root = xml_parse_string(test_xml);
+  // // Get first child of the root node
+  // XMLNode *library = xml_node_child_at(root, 0);
+  // // Print ratings of all books
+  // for (size_t i = 0; i < library->children->len; i++) {
+  //   // Get book
+  //   XMLNode *book = xml_node_child_at(library, i);
+  //   for (size_t j = 0; j < book->children->len; j++) {
+  //     // Get book child tag
+  //     XMLNode *sub_tag = xml_node_child_at(book, j);
+  //     // If tag name is "rating" - print its value
+  //     if (!strcmp(sub_tag->tag, "rating")) {
+  //       // Get rating value
+  //       const char *rating = xml_node_attr(sub_tag, "value");
+  //       printf("Rating is %s\n", rating);
+  //     }
+  //   }
+  // }
+  // // Find 1st matching tag
+  // XMLNode *matching_tag = xml_node_find_tag(root, "title", true);
+  // printf("Matching tag for 'title' = '%s'\n", matching_tag->tag);
+  // // Cleanup and exit
+  // xml_node_free(root);
   return 0;
 }
 
