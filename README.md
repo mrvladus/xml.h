@@ -15,7 +15,7 @@ It's one `xml.h` header file, you can put it directly in your project.
 
 ### Documentation
 
-Look inside `xml.h` all functions have comments.
+Look inside `xml.h`. All functions have comments.
 
 ### Usage
 
