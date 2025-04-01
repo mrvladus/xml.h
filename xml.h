@@ -264,7 +264,6 @@ static bool skip_tags(const char *xml, size_t *idx) {
 static void parse_end_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   (*idx)++; // Skip '/'
   skip_whitespace(xml, idx);
-  size_t tag_start = *idx;
   while (xml[*idx] != '>') (*idx)++;
   (*idx)++; // Skip '>'
   LOG_DEBUG("Parsed end tag: </%s>", (*curr_node)->tag);
