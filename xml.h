@@ -101,6 +101,24 @@ void xml_node_free(XMLNode *node);
 #endif
 #define LOG_ERROR(format, ...) fprintf(stderr, "[XML.H ERROR] " format "\n", ##__VA_ARGS__)
 
+// ------ UTIL FUNCTIONS ------ //
+
+// Trim leading and trailing whitespace from a string (in place).
+static void trim_text(char *text) {
+  char *start = text;
+  while (*start && isspace((unsigned char)*start))
+    start++;
+  char *dest = text;
+  while (*start)
+    *dest++ = *start++;
+  *dest = '\0';
+  dest = text + strlen(text) - 1;
+  while (dest >= text && isspace((unsigned char)*dest)) {
+    *dest = '\0';
+    dest--;
+  }
+}
+
 // ------ LIST ------ //
 
 // Create new dynamic array
@@ -267,110 +285,121 @@ static bool parse_comment(const char *xml, size_t *idx) {
 }
 
 // Parse start tag.
-// Returns false if tag is self-closing like: <tag />
+// Returns false if the tag is self-closing like: <tag />
 // Call continue if returns false.
 static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   // Skip spaces
   while (isspace(xml[*idx]))
     (*idx)++;
-
   // End tag </tag>
   if (xml[*idx] == '/') {
-    while (xml[*idx] != '>')
+    (*idx)++; // Skip '/'
+    size_t tag_start = *idx;
+    while (xml[*idx] != '>' && xml[*idx] != '\0') // Ensure we don't go out of bounds
       (*idx)++;
-    (*idx)++;
-    LOG_DEBUG("Parsed end tag: <%s>", (*curr_node)->tag);
-    // Update current node to be its parent.
+    (*idx)++; // Skip '>'
+    LOG_DEBUG("Parsed end tag: </%s>", (*curr_node)->tag);
     *curr_node = (*curr_node)->parent;
     return false;
   }
-
   // Create new node with current curr_node as parent
   *curr_node = xml_node_new(*curr_node);
-
   // Start tag <tag...>
+  // Get tag name
   size_t tag_start = *idx;
-  while (!(isspace(xml[*idx]) || xml[*idx] == '>' || xml[*idx] == '/'))
+  while (xml[*idx] != '\0' && !(isspace(xml[*idx]) || xml[*idx] == '>' || xml[*idx] == '/'))
     (*idx)++;
   (*curr_node)->tag = strndup(xml + tag_start, *idx - tag_start);
-
-  if (xml[*idx] == '>') {
-    LOG_DEBUG("Parsed start tag with no attributes: <%s>", (*curr_node)->tag);
+  // Skip spaces
+  while (isspace(xml[*idx]))
     (*idx)++;
+  if (xml[*idx] == '>') {
+    (*idx)++; // Consume '>'
+    LOG_DEBUG("Parsed start tag with no attributes: <%s>", (*curr_node)->tag);
     // Skip spaces
     while (isspace(xml[*idx]))
       (*idx)++;
-    // Empty tag <tag></tag>
+    // Check if it's an empty tag <tag></tag>
     if (xml[*idx] == '<' && xml[*idx + 1] == '/')
       return true;
-    // Sub-tag
-    if (xml[*idx] == '<')
-      parse_tag(xml, idx, curr_node);
-    // Inner text
-    size_t text_start = *idx;
-    while (!(xml[*idx + 1] == '<' && xml[*idx + 2] == '/'))
+    // Check if it's a sub-tag
+    if (xml[*idx] == '<') {
       (*idx)++;
-    (*curr_node)->text = strndup(xml + text_start, *idx + 1 - text_start);
-    LOG_DEBUG("Parsed inner text for <%s>: %s", (*curr_node)->tag, (*curr_node)->text);
+      return parse_tag(xml, idx, curr_node);
+    }
+    // Inner text handling
+    size_t text_start = *idx;
+    while (xml[*idx] != '<' && xml[*idx] != '\0')
+      (*idx)++;
+    // Extract and store inner text
+    if (*idx > text_start) {
+      (*curr_node)->text = (strndup(xml + text_start, *idx - text_start));
+      trim_text((*curr_node)->text);
+      LOG_DEBUG("Parsed inner text for <%s>: %s", (*curr_node)->tag, (*curr_node)->text);
+    }
+    // If the next character is '<', parse the next tag
+    if (xml[*idx] == '<') {
+      (*idx)++;
+      return parse_tag(xml, idx, curr_node);
+    }
     return true;
   }
   // Self-closing tag <tag/>
-  else if (xml[*idx] == '/') {
-    LOG_DEBUG("Parsed self-closing tag with no attributes: <%s/>", (*curr_node)->tag);
-    *curr_node = (*curr_node)->parent;
-    while (xml[*idx] != '>')
-      (*idx)++;
-    (*idx)++;
-    return false;
+  if (xml[*idx] == '/') {
+    (*idx)++; // Skip '/'
+    if (xml[*idx] == '>') {
+      (*idx)++; // Skip '>'
+      LOG_DEBUG("Parsed self-closing tag: <%s/>", (*curr_node)->tag);
+      *curr_node = (*curr_node)->parent;
+      return false;
+    }
   }
-  // <tag ...
-  else if (isspace(xml[*idx])) {
+  // Tag with attributes
+  while (xml[*idx] != '>' && xml[*idx] != '/' && xml[*idx] != '\0') {
     // Skip spaces
     while (isspace(xml[*idx]))
       (*idx)++;
-    // Self-closing <tag /> same as above just with spaces before /
-    if (xml[*idx] == '/') {
-      LOG_DEBUG("Parsed self-closing tag with no attributes <%s/>", (*curr_node)->tag);
-      *curr_node = (*curr_node)->parent;
-      while (xml[*idx] != '>')
-        (*idx)++;
+    // Get attribute key
+    size_t attr_start = *idx;
+    while (xml[*idx] != '=' && !isspace(xml[*idx]) && xml[*idx] != '>' && xml[*idx] != '/')
       (*idx)++;
+    char *attr_key = strndup(xml + attr_start, *idx - attr_start);
+    // Skip spaces and '='
+    while (isspace(xml[*idx]) || xml[*idx] == '=')
+      (*idx)++;
+    // Ensure the value is quoted
+    char quote = xml[*idx];
+    if (quote != '"' && quote != '\'') {
+      LOG_ERROR("Malformed attribute: <%s>", attr_key);
+      free(attr_key);
       return false;
     }
-    // Tag with attributes
-    while (xml[*idx] != '>' && xml[*idx] != '/') {
-      // Get attribute key
-      size_t attr_start = *idx;
-      while (xml[*idx] != '=')
-        (*idx)++;
-      char *attr_key = strndup(xml + attr_start, *idx - attr_start);
-      (*idx)++; // Skip '='
-      // Get attribute value
-      char quote = xml[*idx];
-      size_t value_start = *idx;
-      while (xml[*idx] != quote || (xml[*idx] == quote && xml[*idx - 1] == '\\'))
-        (*idx)++;
-      char *attr_value = strndup(xml + value_start, *idx - value_start);
-      (*idx)++; // Skip closing quote
-      xml_node_add_attr(*curr_node, attr_key, attr_value);
-      // Skip any additional spaces between attributes.
-      while (isspace(xml[*idx]))
-        (*idx)++;
-    }
-    // Self-closing tag with attributes <tag attr1="val1" attr2="val2" />
-    if (xml[*idx] == '/') {
-      LOG_DEBUG("Parsed self-closing tag with attributes <%s/>", (*curr_node)->tag);
-      *curr_node = (*curr_node)->parent;
-      while (xml[*idx] != '>')
-        (*idx)++;
+    (*idx)++; // Skip opening quote
+    size_t value_start = *idx;
+    while (xml[*idx] != quote && xml[*idx] != '\0')
       (*idx)++;
-      return false;
-    }
+    char *attr_value = strndup(xml + value_start, *idx - value_start);
+    (*idx)++; // Skip closing quote
+    xml_node_add_attr(*curr_node, attr_key, attr_value);
+    // Skip spaces
+    while (isspace(xml[*idx]))
+      (*idx)++;
+  }
+  // Self-closing tag with attributes <tag attr1="val1" />
+  if (xml[*idx] == '/') {
+    (*idx)++; // Skip '/'
     if (xml[*idx] == '>') {
-      LOG_DEBUG("Parsed start tag with attributes <%s>", (*curr_node)->tag);
-      (*idx)++; // Consume the '>'
-      return true;
+      (*idx)++; // Skip '>'
+      LOG_DEBUG("Parsed self-closing tag with attributes: <%s/>", (*curr_node)->tag);
+      *curr_node = (*curr_node)->parent;
+      return false;
     }
+  }
+  // Tag with attributes
+  if (xml[*idx] == '>') {
+    (*idx)++; // Consume '>'
+    LOG_DEBUG("Parsed start tag with attributes: <%s>", (*curr_node)->tag);
+    return true;
   }
   return true;
 }
@@ -435,55 +464,50 @@ XMLNode *xml_parse_file(const char *path) {
 
 #ifdef XML_H_TEST
 
-const char *test_xml = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
-                       "<!-- Test comment -->"
-                       "<library>"
-                       "Test inner text"
-                       // "    <book id=\"1\">"
-                       // "        <title>The Great Gatsby</title>"
-                       // "        <author>F. Scott Fitzgerald</author>"
-                       // "        <rating value=\"4.5\" />"
-                       // "    </book>"
-                       // "    <book id=\"2\">"
-                       // "        <title>1984</title>"
-                       // "        <author>George Orwell</author>"
-                       // "        <rating value=\"4.9\" />"
-                       // "        <bestseller />"
-                       // "    </book>"
-                       "</library>";
+char test_xml[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
+                  "<!-- Test comment -->"
+                  "<library>"
+                  "    <book id=\"1\">"
+                  "        <title>The Great Gatsby</title>"
+                  "        <author>F. Scott Fitzgerald</author>"
+                  "        <rating value=\"4.5\" />"
+                  "    </book>"
+                  "    <book id=\"2\">"
+                  "        <title>1984</title>"
+                  "        <author>George Orwell</author>"
+                  "        <rating value=\"4.9\" />"
+                  "        <bestseller />"
+                  "    </book>"
+                  "</library>";
 
 int main() {
-  // printf("Test XML:\n%s\n", test_xml);
+  printf("Test XML:\n%s\n", test_xml);
   // Parse XML file and get root node
   XMLNode *root = xml_parse_string(test_xml);
-  // printf("Parse 'test.xml' ... %s\n", root ? "OK" : "FAILED");
-  // // Get first child of the root node
-  // XMLNode *library = xml_node_child_at(root, 0);
-  // printf("Get first child ... %s\n", library ? "OK" : "FAILED");
-  // // Get second book
-  // XMLNode *book2 = xml_node_child_at(library, 1);
-  // printf("Get second book ... %s\n", book2 ? "OK" : "FAILED");
-  // // Get book title
-  // XMLNode *title = xml_node_child_at(book2, 0);
-  // printf("Get second book title ... %s\n", !strcmp(title->text, "1984") ? "OK" : "FAILED");
-  // // Print ratings of all books
-  // for (size_t i = 0; i < library->children->len; i++) {
-  //   // Get book
-  //   XMLNode *book = xml_node_child_at(library, i);
-  //   for (size_t j = 0; j < book->children->len; j++) {
-  //     // Get book child tag
-  //     XMLNode *sub_tag = xml_node_child_at(book, j);
-  //     // If tag name is "rating" - print its value
-  //     if (!strcmp(sub_tag->tag, "rating")) {
-  //       // Get rating value
-  //       const char *rating = xml_node_attr(sub_tag, "value");
-  //       printf("Rating is %s\n", rating);
-  //     }
-  //   }
-  // }
-  // // Find 1st matching tag
-  // XMLNode *matching_tag = xml_node_find_tag(root, "title", true);
-  // printf("Get 1st matching tag ... %s\n", matching_tag ? "OK" : "FAILED");
+  // Get first child of the root node
+  XMLNode *library = xml_node_child_at(root, 0);
+  // Get second book
+  XMLNode *book2 = xml_node_child_at(library, 1);
+  // Get book title
+  XMLNode *title = xml_node_child_at(book2, 0);
+  // Print ratings of all books
+  for (size_t i = 0; i < library->children->len; i++) {
+    // Get book
+    XMLNode *book = xml_node_child_at(library, i);
+    for (size_t j = 0; j < book->children->len; j++) {
+      // Get book child tag
+      XMLNode *sub_tag = xml_node_child_at(book, j);
+      // If tag name is "rating" - print its value
+      if (!strcmp(sub_tag->tag, "rating")) {
+        // Get rating value
+        const char *rating = xml_node_attr(sub_tag, "value");
+        printf("Rating is %s\n", rating);
+      }
+    }
+  }
+  // Find 1st matching tag
+  XMLNode *matching_tag = xml_node_find_tag(root, "title", true);
+  printf("Matching tag for 'title' = '%s'\n", matching_tag->tag);
   // Cleanup and exit
   xml_node_free(root);
   return 0;
