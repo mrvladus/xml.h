@@ -101,24 +101,6 @@ void xml_node_free(XMLNode *node);
 #endif
 #define LOG_ERROR(format, ...) fprintf(stderr, "[XML.H ERROR] " format "\n", ##__VA_ARGS__)
 
-// ------ UTIL FUNCTIONS ------ //
-
-// Trim leading and trailing whitespace from a string (in place).
-static void trim_text(char *text) {
-  char *start = text;
-  while (*start && isspace((unsigned char)*start))
-    start++;
-  char *dest = text;
-  while (*start)
-    *dest++ = *start++;
-  *dest = '\0';
-  dest = text + strlen(text) - 1;
-  while (dest >= text && isspace((unsigned char)*dest)) {
-    *dest = '\0';
-    dest--;
-  }
-}
-
 // ------ LIST ------ //
 
 // Create new dynamic array
@@ -255,26 +237,41 @@ void xml_node_free(XMLNode *node) {
 
 // ------ PARSING FUNCTIONS ------ //
 
-// Parse processing instruction.
-// Returns true if parsed.
-static bool parse_processing_instruction(const char *xml, size_t *idx) {
-  bool out = false;
+// Trim leading and trailing whitespace from a string (in place).
+static void trim_text(char *text) {
+  char *start = text;
+  while (*start && isspace((unsigned char)*start))
+    start++;
+  char *dest = text;
+  while (*start)
+    *dest++ = *start++;
+  *dest = '\0';
+  dest = text + strlen(text) - 1;
+  while (dest >= text && isspace((unsigned char)*dest)) {
+    *dest = '\0';
+    dest--;
+  }
+}
+
+static void skip_whitespace(const char *xml, size_t *idx) {
+  while (isspace(xml[*idx]))
+    (*idx)++;
+}
+
+// Skip processing instructions and comments
+// Returns true if skipped.
+static bool skip_tags(const char *xml, size_t *idx) {
   size_t start = *idx;
+  // Processing instruction
   if (xml[*idx] == '?') {
     while (!(xml[*idx] == '>' && xml[*idx - 1] == '?'))
       (*idx)++;
     (*idx)++;
-    out = true;
     LOG_DEBUG("Parsed processing instruction: <%.*s", (int)(*idx - start), xml + start);
+    return true;
   }
-  return out;
-}
-
-// Parse comment.
-// Returns true if parsed.
-static bool parse_comment(const char *xml, size_t *idx) {
-  if (xml[*idx] == '!' && xml[*idx + 1] == '-' && xml[*idx + 2] == '-') {
-    size_t start = *idx;
+  // Comment
+  else if (xml[*idx] == '!' && xml[*idx + 1] == '-' && xml[*idx + 2] == '-') {
     while (!(xml[*idx] == '>' && xml[*idx - 1] == '-' && xml[*idx - 2] == '-'))
       (*idx)++;
     (*idx)++;
@@ -288,9 +285,7 @@ static bool parse_comment(const char *xml, size_t *idx) {
 // Returns false if the tag is self-closing like: <tag />
 // Call continue if returns false.
 static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
-  // Skip spaces
-  while (isspace(xml[*idx]))
-    (*idx)++;
+  skip_whitespace(xml, idx);
   // End tag </tag>
   if (xml[*idx] == '/') {
     (*idx)++; // Skip '/'
@@ -310,15 +305,11 @@ static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   while (xml[*idx] != '\0' && !(isspace(xml[*idx]) || xml[*idx] == '>' || xml[*idx] == '/'))
     (*idx)++;
   (*curr_node)->tag = strndup(xml + tag_start, *idx - tag_start);
-  // Skip spaces
-  while (isspace(xml[*idx]))
-    (*idx)++;
+  skip_whitespace(xml, idx);
   if (xml[*idx] == '>') {
     (*idx)++; // Consume '>'
     LOG_DEBUG("Parsed start tag with no attributes: <%s>", (*curr_node)->tag);
-    // Skip spaces
-    while (isspace(xml[*idx]))
-      (*idx)++;
+    skip_whitespace(xml, idx);
     // Check if it's an empty tag <tag></tag>
     if (xml[*idx] == '<' && xml[*idx + 1] == '/')
       return true;
@@ -356,9 +347,7 @@ static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   }
   // Tag with attributes
   while (xml[*idx] != '>' && xml[*idx] != '/' && xml[*idx] != '\0') {
-    // Skip spaces
-    while (isspace(xml[*idx]))
-      (*idx)++;
+    skip_whitespace(xml, idx);
     // Get attribute key
     size_t attr_start = *idx;
     while (xml[*idx] != '=' && !isspace(xml[*idx]) && xml[*idx] != '>' && xml[*idx] != '/')
@@ -411,20 +400,12 @@ XMLNode *xml_parse_string(const char *xml) {
   XMLNode *curr_node = root;
   size_t idx = 0;
   while (xml[idx] != '\0') {
-    // Skip spaces
-    if (isspace(xml[idx])) {
-      idx++;
-      continue;
-    }
+    skip_whitespace(xml, &idx);
     // Parse tag
     if (xml[idx] == '<') {
       idx++;
-      // Skip spaces
-      while (isspace(xml[idx]))
-        idx++;
-      if (parse_comment(xml, &idx))
-        continue;
-      if (parse_processing_instruction(xml, &idx))
+      skip_whitespace(xml, &idx);
+      if (skip_tags(xml, &idx))
         continue;
       if (!parse_tag(xml, &idx, &curr_node))
         continue;
