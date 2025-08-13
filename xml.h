@@ -126,6 +126,7 @@ void xml_node_free(XMLNode *node);
 // Print debug message.
 // Only if XML_H_DEBUG is defined.
 void log_debug(const char *format, ...) {
+  (void)format; // Avoid unused parameter warning
 #ifdef XML_H_DEBUG
   va_list args;
   printf("[XML.H DEBUG] ");
@@ -431,7 +432,7 @@ XMLNode *xml_parse_file(const char *path) {
     return NULL;
   }
   size_t bytes_read = fread(buffer, 1, file_size, file);
-  if (bytes_read != file_size) {
+  if (bytes_read != (size_t)file_size) {
     free(buffer);
     fclose(file);
     return NULL;
