@@ -140,17 +140,6 @@ static void log_debug(const char *format, ...) {
 #endif
 }
 
-static void log_error(const char *format, ...) {
-#ifdef XML_H_DEBUG
-  va_list args;
-  printf("[XML.H ERROR] ");
-  va_start(args, format);
-  vprintf(format, args);
-  va_end(args);
-  printf("\n");
-#endif
-}
-
 // ------ LIST ------ //
 
 // Create new dynamic array
