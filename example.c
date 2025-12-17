@@ -1,24 +1,22 @@
 #define XML_H_IMPLEMENTATION // Must be defined before including xml.h in ONE source file
 #include "xml.h"
 
-const char test_xml[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
-                        "<!-- Test comment -->"
-                        "<library>"
-                        "    <book id=\"1\">"
-                        "        <title>The Great Gatsby</title>"
-                        "        <author>F. Scott Fitzgerald</author>"
-                        "        <rating value=\"4.5\" />"
-                        "    </book>"
-                        "    <book id=\"2\">"
-                        "        <title>1984</title>"
-                        "        <author>George Orwell</author>"
-                        "        <rating value=\"4.9\" />"
-                        "        <bestseller />"
-                        "    </book>"
-                        "</library>";
-
-int main() {
-  printf("Test XML:\n%s\n", test_xml);
+void parse_xml() {
+  const char test_xml[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
+                          "<!-- Test comment -->"
+                          "<library>"
+                          "    <book id=\"1\">"
+                          "        <title>The Great Gatsby</title>"
+                          "        <author>F. Scott Fitzgerald</author>"
+                          "        <rating value=\"4.5\" />"
+                          "    </book>"
+                          "    <book id=\"2\">"
+                          "        <title>1984</title>"
+                          "        <author>George Orwell</author>"
+                          "        <rating value=\"4.9\" />"
+                          "        <bestseller />"
+                          "    </book>"
+                          "</library>";
   // Parse XML string and get root node
   XMLNode *root = xml_parse_string(test_xml);
   // Get first child of the root node
@@ -44,7 +42,36 @@ int main() {
   // Find 1st matching tag by path
   XMLNode *author_tag = xml_node_find_by_path(root, "library/book/author", true);
   printf("Matching tag for 'author' = '%s'\n", author_tag->tag);
-  // Cleanup and exit
+  // Cleanup
   xml_node_free(root);
+}
+
+void serialize_xml() {
+  // Create root node
+  XMLNode *library = xml_node_new(NULL, "library", NULL);
+  // Add <book> child
+  XMLNode *book = xml_node_new(library, "book", NULL);
+  // Add attribute id="1" to book node
+  xml_node_add_attr(book, "id", "1");
+  xml_node_new(book, "title", "The Great Gatsby");
+  xml_node_new(book, "author", "F. Scott Fitzgerald");
+  // Add self-closing </rating value="4.5"> tag
+  XMLNode *rating = xml_node_new(book, "rating", NULL);
+  xml_node_add_attr(rating, "value", "4.5");
+  // Add self-closing </bestseller> tag
+  xml_node_new(book, "bestseller", NULL);
+  // Serialize XMLNode into XMLString
+  XMLString *serialized_xml = xml_string_new();
+  xml_node_serialize(library, serialized_xml);
+  // Print serialized XML
+  printf("Serialized XML: %s\n", serialized_xml->str);
+  // Cleanup
+  xml_string_free(serialized_xml);
+  xml_node_free(library);
+}
+
+int main() {
+  parse_xml();
+  serialize_xml();
   return 0;
 }
