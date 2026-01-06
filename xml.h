@@ -52,16 +52,40 @@ In other files just include "xml.h".
 #ifndef XML_H
 #define XML_H
 
-#include <stdbool.h>
-#include <stddef.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
 
+#include <stdbool.h>
+#include <stddef.h>
+
+// ---------- REDEFINE FUNCTIONS VISIBILITY  ---------- //
+
 #ifndef XML_H_API
 #define XML_H_API extern
 #endif // XML_H_API
+
+// ---------- REDEFINE ALLOC FUNCTIONS ---------- //
+
+#ifndef XML_CALLOC_FUNC
+#define XML_CALLOC_FUNC calloc
+#endif // XML_CALLOC_FUNC
+
+#ifndef XML_REALLOC_FUNC
+#define XML_REALLOC_FUNC realloc
+#endif // XML_REALLOC_FUNC
+
+#ifndef XML_STRDUP_FUNC
+#define XML_STRDUP_FUNC strdup
+#endif // XML_STRDUP_FUNC
+
+#ifndef XML_STRNDUP_FUNC
+#define XML_STRNDUP_FUNC strndup
+#endif // XML_STRNDUP_FUNC
+
+#ifndef XML_FREE_FUNC
+#define XML_FREE_FUNC free
+#endif // XML_FREE_FUNC
 
 // ---------- XMLString ---------- //
 
@@ -132,16 +156,15 @@ XML_H_API XMLNode *xml_parse_file(const char *path);
 // Get child of the node at index.
 // Returns NULL if not found.
 XML_H_API XMLNode *xml_node_child_at(XMLNode *node, size_t idx);
-// Find xml tag by path like "div/p/href"
-// If exact is "false" - will search for tags which name contains substring "tag"
-XML_H_API XMLNode *xml_node_find_by_path(XMLNode *root, const char *path, bool exact);
 // Get first matching tag in the tree.
-// If exact is "false" - will return first tag which name contains substring "tag"
+// It also can search tags by path in the format: `div/p/href`
+// If `exact` is `true` - tag names will be matched exactly.
+// If `exact` is `false` - tag names will be matched partially (containing sub-string).
 XML_H_API XMLNode *xml_node_find_tag(XMLNode *node, const char *tag, bool exact);
 // Get value of the tag attribute.
 // Returns NULL if not found.
 XML_H_API const char *xml_node_attr(XMLNode *node, const char *attr_key);
-// Add attribute with `key` and `value` to the node's list of attributes
+// Add attribute with `key` and `value` to the node's list of attributes.
 XML_H_API void xml_node_add_attr(XMLNode *node, const char *key, const char *value);
 // Serialize `XMLNode` into `XMLString`.
 XML_H_API void xml_node_serialize(XMLNode *node, XMLString *str);
@@ -167,7 +190,7 @@ XML_H_API void xml_node_free(XMLNode *node);
 
 #define XML_FREE(ptr)                                                                                                  \
   if (ptr) {                                                                                                           \
-    free(ptr);                                                                                                         \
+    XML_FREE_FUNC(ptr);                                                                                                \
     ptr = NULL;                                                                                                        \
   }
 
@@ -177,10 +200,10 @@ XML_H_API void xml_node_free(XMLNode *node);
 // ---------- XMLString ---------- //
 
 XML_H_API XMLString *xml_string_new() {
-  XMLString *str = (XMLString *)malloc(sizeof(XMLString));
+  XMLString *str = (XMLString *)XML_CALLOC_FUNC(1, sizeof(XMLString));
   str->len = 0;
   str->size = 64;
-  str->str = (char *)malloc(str->size);
+  str->str = (char *)XML_CALLOC_FUNC(1, str->size);
   str->str[0] = '\0';
   return str;
 }
@@ -190,7 +213,7 @@ XML_H_API void xml_string_append(XMLString *str, const char *append) {
   size_t append_len = strlen(append);
   if (str->len + append_len + 1 > str->size) {
     str->size = (str->len + append_len + 1) * 2;
-    str->str = (char *)realloc(str->str, str->size);
+    str->str = (char *)XML_REALLOC_FUNC(str->str, str->size);
   }
   strcpy(str->str + str->len, append);
   str->len += append_len;
@@ -206,10 +229,10 @@ XML_H_API void xml_string_free(XMLString *str) {
 
 // Create new dynamic array
 XML_H_API XMLList *xml_list_new() {
-  XMLList *list = (XMLList *)malloc(sizeof(XMLList));
+  XMLList *list = (XMLList *)XML_CALLOC_FUNC(1, sizeof(XMLList));
   list->len = 0;
   list->size = 32;
-  list->data = malloc(sizeof(void *) * list->size);
+  list->data = XML_CALLOC_FUNC(1, sizeof(void *) * list->size);
   return list;
 }
 
@@ -218,7 +241,7 @@ XML_H_API void xml_list_add(XMLList *list, void *data) {
   if (!list || !data) return;
   if (list->len >= list->size) {
     list->size *= 2;
-    list->data = realloc(list->data, list->size * sizeof(void *));
+    list->data = XML_REALLOC_FUNC(list->data, list->size * sizeof(void *));
   }
   list->data[list->len++] = data;
 }
@@ -226,10 +249,10 @@ XML_H_API void xml_list_add(XMLList *list, void *data) {
 // ---------- XMLNode ---------- //
 
 XML_H_API XMLNode *xml_node_new(XMLNode *parent, const char *tag, const char *inner_text) {
-  XMLNode *node = malloc(sizeof(XMLNode));
+  XMLNode *node = XML_CALLOC_FUNC(1, sizeof(XMLNode));
   node->parent = parent;
-  node->tag = tag ? strdup(tag) : NULL;
-  node->text = inner_text ? strdup(inner_text) : NULL;
+  node->tag = tag ? XML_STRDUP_FUNC(tag) : NULL;
+  node->text = inner_text ? XML_STRDUP_FUNC(inner_text) : NULL;
   node->children = xml_list_new();
   node->attrs = xml_list_new();
   if (parent) xml_list_add(parent->children, node);
@@ -237,9 +260,9 @@ XML_H_API XMLNode *xml_node_new(XMLNode *parent, const char *tag, const char *in
 }
 
 XML_H_API void xml_node_add_attr(XMLNode *node, const char *key, const char *value) {
-  XMLAttr *attr = malloc(sizeof(XMLAttr));
-  attr->key = strdup(key);
-  attr->value = strdup(value);
+  XMLAttr *attr = XML_CALLOC_FUNC(1, sizeof(XMLAttr));
+  attr->key = XML_STRDUP_FUNC(key);
+  attr->value = XML_STRDUP_FUNC(value);
   xml_list_add(node->attrs, attr);
 }
 
@@ -249,24 +272,24 @@ XML_H_API XMLNode *xml_node_child_at(XMLNode *node, size_t index) {
 }
 
 XML_H_API XMLNode *xml_node_find_tag(XMLNode *node, const char *tag, bool exact) {
-  if (!node || !tag) return NULL; // Invalid input
-  // Check if the current node matches the tag
-  if (node->tag && ((exact && strcmp(node->tag, tag) == 0) || (!exact && strstr(node->tag, tag) != NULL))) return node;
-  // Recursively search through the children of the node
-  for (size_t i = 0; i < node->children->len; i++) {
-    XMLNode *result = xml_node_find_tag(node->children->data[i], tag, exact);
-    if (result) return result; // Return the first match found
+  if (!node || !tag) return NULL;
+  // If tag doesn't contain any '/' then it's a single tag search
+  if (!strchr(tag, '/')) {
+    // Check if the current node matches the tag
+    if (node->tag && ((exact && strcmp(node->tag, tag) == 0) || (!exact && strstr(node->tag, tag) != NULL)))
+      return node;
+    // Recursively search through the children of the node
+    for (size_t i = 0; i < node->children->len; i++) {
+      XMLNode *result = xml_node_find_tag(node->children->data[i], tag, exact);
+      if (result) return result; // Return the first match found
+    }
+    return NULL;
   }
-  // No match found in this subtree
-  return NULL;
-}
-
-XML_H_API XMLNode *xml_node_find_by_path(XMLNode *root, const char *path, bool exact) {
-  if (!root || !path) return NULL;
-  char *tokenized_path = strdup(path);
+  // Path tag search
+  char *tokenized_path = XML_STRDUP_FUNC(tag);
   if (!tokenized_path) return NULL;
   char *segment = strtok(tokenized_path, "/");
-  XMLNode *current = root;
+  XMLNode *current = node;
   while (segment && current) {
     bool found = false;
     for (size_t i = 0; i < current->children->len; i++) {
@@ -341,7 +364,7 @@ static void parse_end_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
 static void parse_tag_name(const char *xml, size_t *idx, XMLNode **curr_node) {
   size_t tag_start = *idx;
   while (!(isspace(xml[*idx]) || xml[*idx] == '>' || xml[*idx] == '/')) (*idx)++;
-  (*curr_node)->tag = strndup(xml + tag_start, *idx - tag_start);
+  (*curr_node)->tag = XML_STRNDUP_FUNC(xml + tag_start, *idx - tag_start);
 }
 
 // Parse tag attributes <tag attr="value" ... >
@@ -382,7 +405,7 @@ static void parse_tag_inner_text(const char *xml, size_t *idx, XMLNode **curr_no
   size_t text_start = *idx;
   while (xml[*idx] != '<') (*idx)++;
   if (*idx > text_start) {
-    (*curr_node)->text = strndup(xml + text_start, *idx - text_start);
+    (*curr_node)->text = XML_STRNDUP_FUNC(xml + text_start, *idx - text_start);
     trim_text((*curr_node)->text);
   }
 }
@@ -451,7 +474,7 @@ XML_H_API XMLNode *xml_parse_file(const char *path) {
   fseek(file, 0, SEEK_END);
   size_t file_size = ftell(file);
   fseek(file, 0, SEEK_SET);
-  char *buffer = (char *)malloc(file_size + 1);
+  char *buffer = (char *)XML_CALLOC_FUNC(1, file_size + 1);
   if (!buffer) {
     fclose(file);
     return NULL;
@@ -529,3 +552,27 @@ XML_H_API void xml_node_free(XMLNode *node) {
 }
 
 #endif // XML_H_IMPLEMENTATION
+
+/*
+
+CHANGELOG:
+
+2.0:
+    Breaking API changes:
+        `xml_node_find_by_path()` functionality merged into `xml_node_find_tag()`.
+        Use `xml_node_find_tag()` everywhere `xml_node_find_by_path()` is used.
+
+    Removed:
+        - xml_node_find_by_path()
+
+    Added:
+        - Redefinable macros to change allocation functions to your own:
+            - XML_CALLOC_FUNC
+            - XML_REALLOC_FUNC
+            - XML_STRDUP_FUNC
+            - XML_STRNDUP_FUNC
+            - XML_FREE_FUNC
+
+1.0: First release
+
+*/
