@@ -454,7 +454,7 @@ XML_H_API XMLNode *xml_parse_string(const char *xml) {
   XMLNode *root = xml_node_new(NULL, NULL, NULL);
   XMLNode *curr_node = root;
   size_t idx = 0;
-  while (xml[idx] != '\0') {
+  while (xml[idx] != '\0' && xml[idx+1] != '\0') {
     SKIP_WHITESPACE(xml, &idx);
     // Parse tag
     if (xml[idx] == '<') {
