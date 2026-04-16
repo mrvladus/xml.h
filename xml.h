@@ -193,8 +193,8 @@ static inline void xml__skip_whitespace(const char *xml, size_t *idx) {
 }
 
 static inline char *xml__strndup(const char *str, size_t n) {
-  char *dup = (char *)XML_CALLOC_FUNC(1, n + 1);
-  strncpy(dup, str, n);
+  void *dup = XML_CALLOC_FUNC(1, n + 1);
+  memcpy(dup, str, n);
   return dup;
 }
 
@@ -336,19 +336,18 @@ static void xml__trim_text(char *text) {
   }
 }
 
-// Skip processing instructions and comments
+// Skip <!-- ... -->, <? ... ?>, <!DOCTYPE ... >
 // Returns true if skipped.
 static bool xml__skip_tags(const char *xml, size_t *idx) {
-  // Processing instruction
-  if (xml[*idx] == '?') {
-    while (!(xml[*idx] == '>' && xml[*idx - 1] == '?')) (*idx)++;
-    (*idx)++;
-    return true;
-  }
-  // Comment
-  else if (xml[*idx] == '!' && xml[*idx + 1] == '-' && xml[*idx + 2] == '-') {
-    while (!(xml[*idx] == '>' && xml[*idx - 1] == '-' && xml[*idx - 2] == '-')) (*idx)++;
-    (*idx)++;
+  if (xml[*idx] == '!' || xml[*idx] == '?') {
+    size_t open_braket_count = 0;
+    while (xml[*idx] != '>' || (xml[*idx] == '>' && open_braket_count > 0)) {
+      if (xml[*idx] == '\0') return false;
+      if (xml[*idx] == '<') open_braket_count++;
+      if (xml[*idx] == '>') open_braket_count--;
+      (*idx)++;
+    }
+    (*idx)++; // Skip '>'
     return true;
   }
   return false;
@@ -575,6 +574,9 @@ CHANGELOG:
         - parse_tag_attributes -> xml__parse_tag_attributes
         - parse_tag_inner_text -> xml__parse_tag_inner_text
         - parse_tag -> xml__parse_tag
+
+    Fixed:
+        - <!DOCTYPE ... > is ignored now too.
 
 2.0:
     Breaking API changes:

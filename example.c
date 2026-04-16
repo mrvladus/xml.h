@@ -2,8 +2,9 @@
 #include "xml.h"
 
 void parse_xml() {
-  const char test_xml[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>"
-                          "<!-- Test comment -->"
+  const char test_xml[] = "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>" // Ignored
+                          "<!-- Comment -->"                            // Ignored
+                          "<!DOCTYPE [ <!ELEMENT><!ATTLIST> ]>"         // Ignored
                           "<library>"
                           "    <book id=\"1\">"
                           "        <title>The Great Gatsby</title>"
