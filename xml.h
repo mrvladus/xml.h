@@ -189,7 +189,7 @@ XML_H_API void xml_node_free(XMLNode *node);
   }
 
 static inline void xml__skip_whitespace(const char *xml, size_t *idx) {
-  while (isspace(xml[*idx])) (*idx)++;
+  while (xml[*idx] != '\0' && isspace((unsigned char)xml[*idx])) (*idx)++;
 }
 
 static inline char *xml__strndup(const char *str, size_t n) {
@@ -270,7 +270,8 @@ XML_H_API void xml_node_add_attr(XMLNode *node, const char *key, const char *val
 }
 
 XML_H_API XMLNode *xml_node_child_at(XMLNode *node, size_t index) {
-  if (index > node->children->len - 1) return NULL;
+  if (!node || !node->children) return NULL;
+  if (index >= node->children->len) return NULL;
   return (XMLNode *)node->children->data[index];
 }
 
@@ -297,6 +298,7 @@ XML_H_API XMLNode *xml_node_find_tag(XMLNode *node, const char *tag, bool exact)
     bool found = false;
     for (size_t i = 0; i < current->children->len; i++) {
       XMLNode *child = (XMLNode *)current->children->data[i];
+      if (!child->tag) continue;
       if ((exact && strcmp(child->tag, segment) == 0) || (!exact && strstr(child->tag, segment) != NULL)) {
         current = child;
         found = true;
@@ -317,7 +319,7 @@ XML_H_API const char *xml_node_attr(XMLNode *node, const char *attr_key) {
   if (!node || !attr_key) return NULL;
   for (size_t i = 0; i < node->attrs->len; i++) {
     XMLAttr *attr = (XMLAttr *)node->attrs->data[i];
-    if (!strcmp(attr->key, attr_key)) return attr->value;
+    if (attr->key && strcmp(attr->key, attr_key) == 0) return attr->value;
   }
   return NULL;
 }
@@ -329,7 +331,9 @@ static void xml__trim_text(char *text) {
   char *dest = text;
   while (*start) *dest++ = *start++;
   *dest = '\0';
-  dest = text + strlen(text) - 1;
+  size_t len = strlen(text);
+  if (len == 0) return;
+  dest = text + len - 1;
   while (dest >= text && isspace((unsigned char)*dest)) {
     *dest = '\0';
     dest--;
@@ -357,22 +361,22 @@ static bool xml__skip_tags(const char *xml, size_t *idx) {
 static void xml__parse_end_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   (*idx)++; // Skip '/'
   xml__skip_whitespace(xml, idx);
-  while (xml[*idx] != '>') (*idx)++;
-  (*idx)++; // Skip '>'
+  while (xml[*idx] != '>' && xml[*idx] != '\0') (*idx)++;
+  if (xml[*idx] == '>') (*idx)++; // Skip '>'
   *curr_node = (*curr_node)->parent;
 }
 
 // Parse tag name <name ... >
 static void xml__parse_tag_name(const char *xml, size_t *idx, XMLNode **curr_node) {
   size_t tag_start = *idx;
-  while (!(isspace(xml[*idx]) || xml[*idx] == '>' || xml[*idx] == '/')) (*idx)++;
+  while (!(isspace(xml[*idx]) || xml[*idx] == '>' || xml[*idx] == '/') && xml[*idx] != '\0') (*idx)++;
   (*curr_node)->tag = xml__strndup(xml + tag_start, *idx - tag_start);
 }
 
 // Parse tag attributes <tag attr="value" ... >
 static void xml__parse_tag_attributes(const char *xml, size_t *idx, XMLNode **curr_node) {
   xml__skip_whitespace(xml, idx);
-  while (!(xml[*idx] == '>' || xml[*idx] == '/')) {
+  while (xml[*idx] != '\0' && !(xml[*idx] == '>' || xml[*idx] == '/')) {
     size_t attr_start = *idx;
     while (xml[*idx] != '\0' && xml[*idx] != '=' && !isspace(xml[*idx])) (*idx)++;
     if (*idx == attr_start) {
@@ -391,7 +395,11 @@ static void xml__parse_tag_attributes(const char *xml, size_t *idx, XMLNode **cu
     if (quote != '"' && quote != '\'') break;
     (*idx)++; // Skip opening quote
     size_t value_start = *idx;
-    while (xml[*idx] != '\0' && !(xml[*idx] == quote && xml[*idx - 1] != '\\')) { (*idx)++; }
+    while (xml[*idx] != '\0') {
+      if (xml[*idx] == quote)
+        if (*idx == 0 || xml[*idx - 1] != '\\') break;
+      (*idx)++;
+    }
     if (xml[*idx] == '\0') break;
     size_t value_len = *idx - value_start;
     char attr_value[value_len + 1];
@@ -405,7 +413,7 @@ static void xml__parse_tag_attributes(const char *xml, size_t *idx, XMLNode **cu
 
 static void xml__parse_tag_inner_text(const char *xml, size_t *idx, XMLNode **curr_node) {
   size_t text_start = *idx;
-  while (xml[*idx] != '<') (*idx)++;
+  while (xml[*idx] != '<' && xml[*idx] != '\0') (*idx)++;
   if (*idx > text_start) {
     (*curr_node)->text = xml__strndup(xml + text_start, *idx - text_start);
     xml__trim_text((*curr_node)->text);
@@ -428,11 +436,12 @@ static bool xml__parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   // Start tag <tag...>
   xml__parse_tag_name(xml, idx, curr_node);
   // Parse attributes
-  if (isspace(xml[*idx])) xml__parse_tag_attributes(xml, idx, curr_node);
+  if (xml[*idx] != '\0' && isspace(xml[*idx])) xml__parse_tag_attributes(xml, idx, curr_node);
   // Self-closing tag <tag ... />
   if (xml[*idx] == '/') {
     (*idx)++; // Skip '/'
-    while (xml[*idx] != '>') (*idx)++;
+    while (xml[*idx] != '>' && xml[*idx] != '\0') (*idx)++;
+    if (xml[*idx] == '\0') return false;
     (*idx)++; // Consume '>'
     *curr_node = (*curr_node)->parent;
     return false;
@@ -457,7 +466,7 @@ XML_H_API XMLNode *xml_parse_string(const char *xml) {
   XMLNode *root = xml_node_new(NULL, NULL, NULL);
   XMLNode *curr_node = root;
   size_t idx = 0;
-  while (xml[idx] != '\0' && xml[idx + 1] != '\0') {
+  while (xml[idx] != '\0') {
     xml__skip_whitespace(xml, &idx);
     // Parse tag
     if (xml[idx] == '<') {
@@ -497,25 +506,26 @@ XML_H_API XMLNode *xml_parse_file(const char *path) {
 
 XML_H_API void xml_node_serialize(XMLNode *node, XMLString *str) {
   if (!node || !str) return;
-  // Opening tag
+
   if (node->tag) {
-    if (!node->text && node->children->len == 0) xml_string_append(str, "</");
-    else xml_string_append(str, "<");
+    xml_string_append(str, "<");
     xml_string_append(str, node->tag);
+    // Attributes
+    for (size_t i = 0; i < node->attrs->len; ++i) {
+      XMLAttr *attr = node->attrs->data[i];
+      xml_string_append(str, " ");
+      xml_string_append(str, attr->key);
+      xml_string_append(str, "=\"");
+      xml_string_append(str, attr->value);
+      xml_string_append(str, "\"");
+    }
+    // Self-closing case
+    if (node->children->len == 0 && !node->text) {
+      xml_string_append(str, "/>");
+      return;
+    }
+    xml_string_append(str, ">");
   }
-  // Attributes
-  if (node->attrs->len > 0) xml_string_append(str, " ");
-  for (size_t i = 0; i < node->attrs->len; ++i) {
-    XMLAttr *attr = node->attrs->data[i];
-    xml_string_append(str, attr->key);
-    xml_string_append(str, "=\"");
-    xml_string_append(str, attr->value);
-    xml_string_append(str, "\"");
-    if (i < node->attrs->len - 1) xml_string_append(str, " ");
-  }
-  if (node->tag) xml_string_append(str, ">");
-  // Return if tag is self-closing
-  if (node->children->len == 0 && !node->text) return;
   // Text
   if (node->text) xml_string_append(str, node->text);
   // Children
@@ -576,7 +586,8 @@ CHANGELOG:
         - parse_tag -> xml__parse_tag
 
     Fixed:
-        - <!DOCTYPE ... > is ignored now too.
+        - <!DOCTYPE ... > is ignored now too
+        - Multiple OOB-read and NULL-dereference bugs.
 
 2.0:
     Breaking API changes:
