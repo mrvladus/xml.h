@@ -68,22 +68,17 @@ extern "C" {
 // ---------- REDEFINE ALLOC FUNCTIONS ---------- //
 
 #ifndef XML_CALLOC_FUNC
+#include <stdlib.h>
 #define XML_CALLOC_FUNC calloc
 #endif // XML_CALLOC_FUNC
 
 #ifndef XML_REALLOC_FUNC
+#include <stdlib.h>
 #define XML_REALLOC_FUNC realloc
 #endif // XML_REALLOC_FUNC
 
-#ifndef XML_STRDUP_FUNC
-#define XML_STRDUP_FUNC strdup
-#endif // XML_STRDUP_FUNC
-
-#ifndef XML_STRNDUP_FUNC
-#define XML_STRNDUP_FUNC strndup
-#endif // XML_STRNDUP_FUNC
-
 #ifndef XML_FREE_FUNC
+#include <stdlib.h>
 #define XML_FREE_FUNC free
 #endif // XML_FREE_FUNC
 
@@ -185,7 +180,6 @@ XML_H_API void xml_node_free(XMLNode *node);
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define XML_FREE(ptr)                                                                                                  \
@@ -194,8 +188,17 @@ XML_H_API void xml_node_free(XMLNode *node);
     ptr = NULL;                                                                                                        \
   }
 
-#define SKIP_WHITESPACE(xml_ptr, idx_ptr)                                                                              \
-  while (isspace(xml_ptr[*idx_ptr])) (*idx_ptr)++
+static inline void xml__skip_whitespace(const char *xml, size_t *idx) {
+  while (isspace(xml[*idx])) (*idx)++;
+}
+
+static inline char *xml__strndup(const char *str, size_t n) {
+  char *dup = (char *)XML_CALLOC_FUNC(1, n + 1);
+  strncpy(dup, str, n);
+  return dup;
+}
+
+static inline char *xml__strdup(const char *str) { return xml__strndup(str, strlen(str)); }
 
 // ---------- XMLString ---------- //
 
@@ -251,8 +254,8 @@ XML_H_API void xml_list_add(XMLList *list, void *data) {
 XML_H_API XMLNode *xml_node_new(XMLNode *parent, const char *tag, const char *inner_text) {
   XMLNode *node = XML_CALLOC_FUNC(1, sizeof(XMLNode));
   node->parent = parent;
-  node->tag = tag ? XML_STRDUP_FUNC(tag) : NULL;
-  node->text = inner_text ? XML_STRDUP_FUNC(inner_text) : NULL;
+  node->tag = tag ? xml__strdup(tag) : NULL;
+  node->text = inner_text ? xml__strdup(inner_text) : NULL;
   node->children = xml_list_new();
   node->attrs = xml_list_new();
   if (parent) xml_list_add(parent->children, node);
@@ -261,8 +264,8 @@ XML_H_API XMLNode *xml_node_new(XMLNode *parent, const char *tag, const char *in
 
 XML_H_API void xml_node_add_attr(XMLNode *node, const char *key, const char *value) {
   XMLAttr *attr = XML_CALLOC_FUNC(1, sizeof(XMLAttr));
-  attr->key = XML_STRDUP_FUNC(key);
-  attr->value = XML_STRDUP_FUNC(value);
+  attr->key = xml__strdup(key);
+  attr->value = xml__strdup(value);
   xml_list_add(node->attrs, attr);
 }
 
@@ -286,7 +289,7 @@ XML_H_API XMLNode *xml_node_find_tag(XMLNode *node, const char *tag, bool exact)
     return NULL;
   }
   // Path tag search
-  char *tokenized_path = XML_STRDUP_FUNC(tag);
+  char *tokenized_path = xml__strdup(tag);
   if (!tokenized_path) return NULL;
   char *segment = strtok(tokenized_path, "/");
   XMLNode *current = node;
@@ -320,7 +323,7 @@ XML_H_API const char *xml_node_attr(XMLNode *node, const char *attr_key) {
 }
 
 // Trim leading and trailing whitespace from a string (in place).
-static void trim_text(char *text) {
+static void xml__trim_text(char *text) {
   char *start = text;
   while (*start && isspace((unsigned char)*start)) start++;
   char *dest = text;
@@ -335,7 +338,7 @@ static void trim_text(char *text) {
 
 // Skip processing instructions and comments
 // Returns true if skipped.
-static bool skip_tags(const char *xml, size_t *idx) {
+static bool xml__skip_tags(const char *xml, size_t *idx) {
   // Processing instruction
   if (xml[*idx] == '?') {
     while (!(xml[*idx] == '>' && xml[*idx - 1] == '?')) (*idx)++;
@@ -352,24 +355,24 @@ static bool skip_tags(const char *xml, size_t *idx) {
 }
 
 // Parse end tag </tag>.
-static void parse_end_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
+static void xml__parse_end_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   (*idx)++; // Skip '/'
-  SKIP_WHITESPACE(xml, idx);
+  xml__skip_whitespace(xml, idx);
   while (xml[*idx] != '>') (*idx)++;
   (*idx)++; // Skip '>'
   *curr_node = (*curr_node)->parent;
 }
 
 // Parse tag name <name ... >
-static void parse_tag_name(const char *xml, size_t *idx, XMLNode **curr_node) {
+static void xml__parse_tag_name(const char *xml, size_t *idx, XMLNode **curr_node) {
   size_t tag_start = *idx;
   while (!(isspace(xml[*idx]) || xml[*idx] == '>' || xml[*idx] == '/')) (*idx)++;
-  (*curr_node)->tag = XML_STRNDUP_FUNC(xml + tag_start, *idx - tag_start);
+  (*curr_node)->tag = xml__strndup(xml + tag_start, *idx - tag_start);
 }
 
 // Parse tag attributes <tag attr="value" ... >
-static void parse_tag_attributes(const char *xml, size_t *idx, XMLNode **curr_node) {
-  SKIP_WHITESPACE(xml, idx);
+static void xml__parse_tag_attributes(const char *xml, size_t *idx, XMLNode **curr_node) {
+  xml__skip_whitespace(xml, idx);
   while (!(xml[*idx] == '>' || xml[*idx] == '/')) {
     size_t attr_start = *idx;
     while (xml[*idx] != '\0' && xml[*idx] != '=' && !isspace(xml[*idx])) (*idx)++;
@@ -381,10 +384,10 @@ static void parse_tag_attributes(const char *xml, size_t *idx, XMLNode **curr_no
     char attr_key[attr_len + 1];
     strncpy(attr_key, xml + attr_start, attr_len);
     attr_key[attr_len] = '\0';
-    SKIP_WHITESPACE(xml, idx);
+    xml__skip_whitespace(xml, idx);
     if (xml[*idx] != '=') break;
     (*idx)++;
-    SKIP_WHITESPACE(xml, idx);
+    xml__skip_whitespace(xml, idx);
     char quote = xml[*idx];
     if (quote != '"' && quote != '\'') break;
     (*idx)++; // Skip opening quote
@@ -397,40 +400,36 @@ static void parse_tag_attributes(const char *xml, size_t *idx, XMLNode **curr_no
     attr_value[value_len] = '\0';
     (*idx)++; // Skip closing quote
     xml_node_add_attr(*curr_node, attr_key, attr_value);
-    SKIP_WHITESPACE(xml, idx);
+    xml__skip_whitespace(xml, idx);
   }
 }
 
-static void parse_tag_inner_text(const char *xml, size_t *idx, XMLNode **curr_node) {
+static void xml__parse_tag_inner_text(const char *xml, size_t *idx, XMLNode **curr_node) {
   size_t text_start = *idx;
   while (xml[*idx] != '<') (*idx)++;
   if (*idx > text_start) {
-    (*curr_node)->text = XML_STRNDUP_FUNC(xml + text_start, *idx - text_start);
-    trim_text((*curr_node)->text);
+    (*curr_node)->text = xml__strndup(xml + text_start, *idx - text_start);
+    xml__trim_text((*curr_node)->text);
   }
 }
 
 // Parse start tag.
 // Returns false if the tag is self-closing like: <tag />
 // Call continue if returns false.
-static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
-  SKIP_WHITESPACE(xml, idx);
-  // Skip comments and processing instructions inside element content.
-  // xml_parse_string calls skip_tags in its top-level loop, but the
-  // recursive parse_tag path does not — comments inside elements are
-  // mis-parsed as element nodes without this check.
-  if (skip_tags(xml, idx)) return false;
+static bool xml__parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
+  xml__skip_whitespace(xml, idx);
+  if (xml__skip_tags(xml, idx)) return false;
   // End tag </tag>
   if (xml[*idx] == '/') {
-    parse_end_tag(xml, idx, curr_node);
+    xml__parse_end_tag(xml, idx, curr_node);
     return false;
   }
   // Create new node with current curr_node as parent
   *curr_node = xml_node_new(*curr_node, NULL, NULL);
   // Start tag <tag...>
-  parse_tag_name(xml, idx, curr_node);
+  xml__parse_tag_name(xml, idx, curr_node);
   // Parse attributes
-  if (isspace(xml[*idx])) parse_tag_attributes(xml, idx, curr_node);
+  if (isspace(xml[*idx])) xml__parse_tag_attributes(xml, idx, curr_node);
   // Self-closing tag <tag ... />
   if (xml[*idx] == '/') {
     (*idx)++; // Skip '/'
@@ -442,16 +441,16 @@ static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   // Start tag <tag ... >
   else if (xml[*idx] == '>') {
     (*idx)++; // Consume '>'
-    SKIP_WHITESPACE(xml, idx);
-    parse_tag_inner_text(xml, idx, curr_node);
+    xml__skip_whitespace(xml, idx);
+    xml__parse_tag_inner_text(xml, idx, curr_node);
     // If the next character is '<', parse the next tag
     if (xml[*idx] == '<') {
       (*idx)++; // Consume '<'
-      return parse_tag(xml, idx, curr_node);
+      return xml__parse_tag(xml, idx, curr_node);
     }
     return true;
   }
-  SKIP_WHITESPACE(xml, idx);
+  xml__skip_whitespace(xml, idx);
   return true;
 }
 
@@ -459,14 +458,14 @@ XML_H_API XMLNode *xml_parse_string(const char *xml) {
   XMLNode *root = xml_node_new(NULL, NULL, NULL);
   XMLNode *curr_node = root;
   size_t idx = 0;
-  while (xml[idx] != '\0' && xml[idx+1] != '\0') {
-    SKIP_WHITESPACE(xml, &idx);
+  while (xml[idx] != '\0' && xml[idx + 1] != '\0') {
+    xml__skip_whitespace(xml, &idx);
     // Parse tag
     if (xml[idx] == '<') {
       idx++;
-      SKIP_WHITESPACE(xml, &idx);
-      if (skip_tags(xml, &idx)) continue;
-      if (!parse_tag(xml, &idx, &curr_node)) continue;
+      xml__skip_whitespace(xml, &idx);
+      if (xml__skip_tags(xml, &idx)) continue;
+      if (!xml__parse_tag(xml, &idx, &curr_node)) continue;
     }
     idx++;
   }
@@ -561,6 +560,21 @@ XML_H_API void xml_node_free(XMLNode *node) {
 /*
 
 CHANGELOG:
+
+2.1:
+    Removed:
+        - XML_STRDUP_FUNC (POSIX function. Replaced with xml__strdup implementation)
+        - XML_STRNDUP_FUNC (POSIX function. Replaced with xml__strndup implementation)
+
+    Added namespacing to internal functions:
+        - SKIP_WHITESPACE -> xml__skip_whitespace
+        - trim_text -> xml__trim_text
+        - skip_tags -> xml__skip_tags
+        - parse_end_tag -> xml__parse_end_tag
+        - parse_tag_name -> xml__parse_tag_name
+        - parse_tag_attributes -> xml__parse_tag_attributes
+        - parse_tag_inner_text -> xml__parse_tag_inner_text
+        - parse_tag -> xml__parse_tag
 
 2.0:
     Breaking API changes:
