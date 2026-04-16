@@ -415,6 +415,11 @@ static void parse_tag_inner_text(const char *xml, size_t *idx, XMLNode **curr_no
 // Call continue if returns false.
 static bool parse_tag(const char *xml, size_t *idx, XMLNode **curr_node) {
   SKIP_WHITESPACE(xml, idx);
+  // Skip comments and processing instructions inside element content.
+  // xml_parse_string calls skip_tags in its top-level loop, but the
+  // recursive parse_tag path does not — comments inside elements are
+  // mis-parsed as element nodes without this check.
+  if (skip_tags(xml, idx)) return false;
   // End tag </tag>
   if (xml[*idx] == '/') {
     parse_end_tag(xml, idx, curr_node);
