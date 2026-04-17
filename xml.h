@@ -95,10 +95,13 @@ typedef struct {
 // Returns `NULL` for error.
 // Free with `xml_string_free()`.
 XML_H_API XMLString *xml_string_new();
-// Append string to the end of the `XMLString`.
-XML_H_API void xml_string_append(XMLString *str, const char *append);
 // Free `XMLString`.
 XML_H_API void xml_string_free(XMLString *str);
+// Append string to the end of the `XMLString`.
+XML_H_API void xml_string_append(XMLString *str, const char *append);
+// Steal the string pointer from `XMLString` and free the `XMLString`.
+// Caller is responsible for freeing the returned string.
+XML_H_API char *xml_string_steal(XMLString *str);
 
 // ---------- XMLList ---------- //
 
@@ -200,6 +203,41 @@ static inline char *xml__strndup(const char *str, size_t n) {
 
 static inline char *xml__strdup(const char *str) { return xml__strndup(str, strlen(str)); }
 
+static char *xml__decode_entities(const char *str, size_t len) {
+  XMLString *decoded = xml_string_new();
+  size_t i = 0;
+  while (i < len) {
+    if (str[i] == '&') {
+      if (strncmp(&str[i], "&lt;", 4) == 0) {
+        xml_string_append(decoded, "<");
+        i += 4;
+      } else if (strncmp(&str[i], "&gt;", 4) == 0) {
+        xml_string_append(decoded, ">");
+        i += 4;
+      } else if (strncmp(&str[i], "&amp;", 5) == 0) {
+        xml_string_append(decoded, "&");
+        i += 5;
+      } else if (strncmp(&str[i], "&apos;", 6) == 0) {
+        xml_string_append(decoded, "'");
+        i += 6;
+      } else if (strncmp(&str[i], "&quot;", 6) == 0) {
+        xml_string_append(decoded, "\"");
+        i += 6;
+      } else {
+        // Copy as-is for unknown entities
+        char temp[2] = {str[i], 0};
+        xml_string_append(decoded, temp);
+        i++;
+      }
+    } else {
+      char temp[2] = {str[i], 0};
+      xml_string_append(decoded, temp);
+      i++;
+    }
+  }
+  return xml_string_steal(decoded);
+}
+
 // ---------- XMLString ---------- //
 
 XML_H_API XMLString *xml_string_new() {
@@ -226,6 +264,13 @@ XML_H_API void xml_string_free(XMLString *str) {
   if (!str) return;
   XML_FREE(str->str);
   XML_FREE(str);
+}
+
+XML_H_API char *xml_string_steal(XMLString *str) {
+  if (!str) return NULL;
+  char *stealed = str->str;
+  XML_FREE(str);
+  return stealed;
 }
 
 // ---------- XMLList ---------- //
@@ -324,22 +369,6 @@ XML_H_API const char *xml_node_attr(XMLNode *node, const char *attr_key) {
   return NULL;
 }
 
-// Trim leading and trailing whitespace from a string (in place).
-static void xml__trim_text(char *text) {
-  char *start = text;
-  while (*start && isspace((unsigned char)*start)) start++;
-  char *dest = text;
-  while (*start) *dest++ = *start++;
-  *dest = '\0';
-  size_t len = strlen(text);
-  if (len == 0) return;
-  dest = text + len - 1;
-  while (dest >= text && isspace((unsigned char)*dest)) {
-    *dest = '\0';
-    dest--;
-  }
-}
-
 // Skip <!-- ... -->, <? ... ?>, <!DOCTYPE ... >
 // Returns true if skipped.
 static bool xml__skip_tags(const char *xml, size_t *idx) {
@@ -414,10 +443,7 @@ static void xml__parse_tag_attributes(const char *xml, size_t *idx, XMLNode **cu
 static void xml__parse_tag_inner_text(const char *xml, size_t *idx, XMLNode **curr_node) {
   size_t text_start = *idx;
   while (xml[*idx] != '<' && xml[*idx] != '\0') (*idx)++;
-  if (*idx > text_start) {
-    (*curr_node)->text = xml__strndup(xml + text_start, *idx - text_start);
-    xml__trim_text((*curr_node)->text);
-  }
+  if (*idx > text_start) (*curr_node)->text = xml__decode_entities(xml + text_start, *idx - text_start);
 }
 
 // Parse start tag.
@@ -572,22 +598,25 @@ CHANGELOG:
 
 2.1:
     Removed:
-        - XML_STRDUP_FUNC (POSIX function. Replaced with xml__strdup implementation)
-        - XML_STRNDUP_FUNC (POSIX function. Replaced with xml__strndup implementation)
+        - XML_STRDUP_FUNC (POSIX function. Replaced with xml__strdup() implementation)
+        - XML_STRNDUP_FUNC (POSIX function. Replaced with xml__strndup() implementation)
+        - Private trim_text() function.
+
+    Added:
+        - xml_string_steal()
 
     Added namespacing to internal functions:
-        - SKIP_WHITESPACE -> xml__skip_whitespace
-        - trim_text -> xml__trim_text
-        - skip_tags -> xml__skip_tags
-        - parse_end_tag -> xml__parse_end_tag
-        - parse_tag_name -> xml__parse_tag_name
-        - parse_tag_attributes -> xml__parse_tag_attributes
-        - parse_tag_inner_text -> xml__parse_tag_inner_text
-        - parse_tag -> xml__parse_tag
+        - SKIP_WHITESPACE -> xml__skip_whitespace()
+        - skip_tags() -> xml__skip_tags()
+        - parse_end_tag() -> xml__parse_end_tag()
+        - parse_tag_name() -> xml__parse_tag_name()
+        - parse_tag_attributes() -> xml__parse_tag_attributes()
+        - parse_tag_inner_text() -> xml__parse_tag_inner_text()
+        - parse_tag() -> xml__parse_tag()
 
     Fixed:
         - <!DOCTYPE ... > is ignored now too
-        - Multiple OOB-read and NULL-dereference bugs.
+        - Multiple OOB-read and NULL-dereference bugs
 
 2.0:
     Breaking API changes:

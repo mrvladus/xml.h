@@ -2,7 +2,7 @@
 
 # Compiler and flags
 CC = gcc
-CFLAGS = -Wall -Wextra -Wpedantic -std=gnu99 -O3
+CFLAGS = -Wall -Wextra -Wpedantic -std=gnu99 -g
 
 # Target executable
 TARGET = example

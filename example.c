@@ -7,13 +7,13 @@ void parse_xml() {
                           "<!DOCTYPE [ <!ELEMENT><!ATTLIST> ]>"         // Ignored
                           "<library>"
                           "    <book id=\"1\">"
-                          "        <title>The Great Gatsby</title>"
-                          "        <author>F. Scott Fitzgerald</author>"
+                          "        <title>&quot;The Great Gatsby&quot;</title>"
+                          "        <author>&quot;F. Scott Fitzgerald&quot;</author>"
                           "        <rating value=\"4.5\" />"
                           "    </book>"
                           "    <book id=\"2\">"
-                          "        <title>1984</title>"
-                          "        <author>George Orwell</author>"
+                          "        <title>&quot;1984&quot;</title>"
+                          "        <author>&quot;George Orwell&quot;</author>"
                           "        <rating value=\"4.9\" />"
                           "        <bestseller />"
                           "    </book>"
@@ -39,10 +39,10 @@ void parse_xml() {
   }
   // Find 1st matching tag
   XMLNode *title_tag = xml_node_find_tag(root, "title", true);
-  printf("Matching tag for 'title' = '%s'\n", title_tag->tag);
+  printf("Matching tag for 'title' = %s\n", title_tag->text);
   // Find 1st matching tag by path
   XMLNode *author_tag = xml_node_find_tag(root, "library/book/author", true);
-  printf("Matching tag for 'author' = '%s'\n", author_tag->tag);
+  printf("Matching tag for 'author' = %s\n", author_tag->text);
   // Cleanup
   xml_node_free(root);
 }
