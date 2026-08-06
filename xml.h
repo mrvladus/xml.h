@@ -496,6 +496,7 @@ XML_H_API XMLNode *xml_parse_string(const char *xml) {
   size_t idx = 0;
   while (xml[idx] != '\0') {
     xml__skip_whitespace(xml, &idx);
+    if (xml[idx] == '\0') break;
     // Parse tag
     if (xml[idx] == '<') {
       idx++;
